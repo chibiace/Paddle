@@ -10,4 +10,3 @@ there are also plenty of bugs. enjoy.
 
 - Serve files with a webserver apache2/nginx etc.
 - Edit paddleconfig.json to reflect your moonraker installation
-- Create a directory called gcodes and symlink it to your gcode_files directory used by klipper/moonraker
