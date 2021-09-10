@@ -1,0 +1,560 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <link href="https://fonts.googleapis.com/css?family=Roboto:100,300,400,500,700,900" rel="stylesheet">
+  <link href="https://cdn.jsdelivr.net/npm/@mdi/font@5.x/css/materialdesignicons.min.css" rel="stylesheet">
+  <link href="https://cdn.jsdelivr.net/npm/vuetify@2.x/dist/vuetify.min.css" rel="stylesheet">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, minimal-ui">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="icon" type="image/png" href="favicon.png" />
+  <link rel="icon" type="image/ico" href="favicon.ico" />
+  <link href="https://fonts.googleapis.com/css2?family=Fira+Code&family=Ubuntu&display=swap" rel="stylesheet">
+  <link href="paddle.css" rel="stylesheet">
+  <title>Paddle - Problem Exists Between Nuts and Chair</title>
+  <style>
+
+  </style>
+</head>
+
+<body>
+  <div id="app">
+    <v-app>
+      <v-main>
+        <v-container>
+
+
+
+          <v-btn @click="$vuetify.theme.dark = !$vuetify.theme.dark" text class="text-none mb-5">
+            <h1>
+              <font class="deep-orange accent-3 ">P</font>addle
+            </h1>
+          </v-btn>
+          <v-row v-if="server.klippyState == 'error' | server.klippyState == 'shutdown'">
+            <v-col>
+              <v-alert dense outlined type="error">
+                <small>{{printer.printStatus.stateMessage}}</small>
+              </v-alert>
+
+            </v-col>
+          </v-row>
+          <v-row>
+            <v-col>
+              <v-btn style="width:100%;" @click="wsSend('printer.emergency_stop')" color="error">
+                <v-icon>mdi-alert-octagon</v-icon> E-STOP
+              </v-btn>
+            </v-col>
+            <v-col>
+              <v-btn style="width:100%;" @click="wsSend('printer.restart')"
+                :color="server.klippyConnected == true ? 'success' : 'warning'">
+                <v-icon>mdi-restart</v-icon> Klipper {{server.klippyState}}
+              </v-btn>
+            </v-col>
+            <v-col>
+              <v-btn style="width:100%;" @click="wsSend('server.restart')"
+                :color="wsState === 'Open' ? 'success':'warning'">
+                <v-icon>mdi-restart</v-icon> Moonraker {{wsState}}
+              </v-btn>
+            </v-col>
+            <v-col>
+              <v-btn style="width:100%;" @click="wsSend('printer.firmware_restart')" color="info">
+                <v-icon>mdi-restart</v-icon> Firmware
+              </v-btn>
+            </v-col>
+
+          </v-row>
+
+
+
+          <v-row v-if="server.klippyState === 'ready'">
+            <v-col v-if="printer.queryReady">
+
+              <v-card class="card fill-height">
+                <v-card-title class="mx-auto">
+                  <v-icon>mdi-printer-3d</v-icon> Print Control
+                </v-card-title>
+                <v-card-text>
+
+
+                  <div class="d-flex flex-column mx-auto mb-auto">
+                    <v-btn @click="wsSend('server.files.get_directory',{'extended':true},9004);UI.fileDialog = true"
+                      color="info"
+                      v-if="printer.printStatus.state == 'standby' || printer.printStatus.state == 'cancelled'|| printer.printStatus.state == 'complete'">
+                      <v-icon>mdi-folder</v-icon> Open
+                    </v-btn>
+                    <v-btn @click="wsSend('printer.print.start',{'filename':printer.printStatus.fileName})"
+                      color="success" v-if="printer.printStatus.state == 'cancelled'">
+                      <v-icon>mdi-play</v-icon> Restart
+                    </v-btn>
+                    <v-btn @click="wsSend('printer.print.pause')" color="warning"
+                      v-if="printer.printStatus.state == 'printing'">
+                      <v-icon>mdi-pause</v-icon> Pause
+                    </v-btn>
+                    <v-btn @click="wsSend('printer.print.resume')" color="success"
+                      v-if="printer.printStatus.state == 'paused'">
+                      <v-icon>mdi-play</v-icon> Resume
+                    </v-btn>
+                    <v-btn @click="wsSend('printer.print.cancel')" color="error" v-if="printer.printStatus.filePath">
+                      <v-icon>mdi-cancel</v-icon> Cancel
+                    </v-btn>
+
+                  </div>
+                  <p>Status: <b>{{printer.printStatus.state}}</b></p>
+                  <!-- <p>File: <b>{{printer.printStatus.fileName}}</b></p> -->
+                  <!-- <p>active:{{printer.printStatus.isActive}}</p> -->
+                  <!-- <p>path:{{printer.printStatus.filePath}}</p> -->
+
+
+
+                  <v-row class="cols-md12" no-gutters>
+                    <v-col v-for="i,v in printer.printStatus.fileMetadata" style="margin: 0.25em;">
+                      <div style="background-color: #094a86; border-radius: 5%; padding: 1em;"><i>{{v}}</i> {{i}}</div>
+                    </v-col>
+                  </v-row>
+
+
+                </v-card-text>
+                <v-progress-linear class="mt-auto" v-if="printer.printStatus.fileName" color="success" height="40"
+                  :value="printer.printStatus.progress" style="color:black;"> <template v-slot:default="{ value }">
+                    <strong
+                      v-if="printer.printStatus.state!='complete'">{{printer.printStatus.progress}}%</strong>
+                    <strong v-if="printer.printStatus.state=='complete'">Complete</strong>
+                  </template></v-progress-linear>
+              </v-card>
+            </v-col>
+
+            <v-col v-if="app.webcamEnabled">
+
+              <v-card class="card fill-height">
+                <v-card-title class="mx-auto">
+                  <v-icon>mdi-webcam</v-icon> Webcam
+                </v-card-title>
+                <v-card-text>
+                  <v-img class="ma-auto" src="https://picsum.photos/480/640" max-width="480" max-height="640"> </v-img>
+
+                  <!-- <video width="352" height="288" src="stream.m3u8" controls autoplay>
+      </video> -->
+
+                </v-card-text>
+              </v-card>
+
+
+            </v-col>
+            <v-col>
+              <v-card class="card fill-height">
+                <v-card-title class="mx-auto">
+                  <v-icon>mdi-toggle-switch</v-icon> Macros
+                </v-card-title>
+                <v-card-text class="d-flex flex-column mx-auto">
+
+                  <v-btn v-for="i in printer.macros" @click="gcode(i)" color="info">{{i}}</v-btn>
+
+                </v-card-text>
+
+
+              </v-card>
+
+
+            </v-col>
+
+            <!-- </v-row>
+
+<v-row> -->
+            <v-col v-if="printer.queryReady">
+              <v-card class="card fill-height">
+                <v-card-title class="mx-auto">
+                  <v-icon>mdi-thermometer</v-icon> Temperatures
+                </v-card-title>
+                <v-card-text class="d-flex flex-column mx-auto flex-nowrap  fill-height">
+
+
+                  <v-btn @click="gcode('m104 s200')" color="deep-orange accent-3">
+                    <v-icon>mdi-fire</v-icon>Preheat Hotend to 200C
+                  </v-btn>
+                  <v-btn @click="gcode('m140 s100')" color="deep-orange accent-3">
+                    <v-icon>mdi-fire</v-icon>Preheat Bed to 100°C
+                  </v-btn>
+                  <v-btn @click="gcode('m104 s0');gcode('m140 s0')">
+                    <v-icon>mdi-fire-off</v-icon> Heaters Off
+                  </v-btn>
+                  <v-row class="d-flex flex-column mt-5">
+                    <v-col>
+                      <v-btn text>
+                        <v-icon>mdi-thermometer</v-icon>
+                        E:
+                        {{Math.round(printer.queryResult.status.extruder.temperature)}}°C
+                        /
+                        {{Math.round(printer.queryResult.status.extruder.target)}}°C
+                      </v-btn>
+
+                      <v-btn
+                        @click="gcode('m104 s'+(parseInt(printer.queryResult.status.extruder.target)-UI.manualControl.temperatureSetting))"
+                        small>-</v-btn>
+                      <v-btn
+                        @click="gcode('m104 s'+(parseInt(printer.queryResult.status.extruder.target)+UI.manualControl.temperatureSetting))"
+                        small>+</v-btn>
+                      <v-btn @click="gcode('m104 s0');gcode('m140 s0')" small>
+                        <v-icon>mdi-fire-off</v-icon>
+                      </v-btn>
+
+                    </v-col>
+                    <v-col>
+                      <v-btn text>
+                        <v-icon>mdi-thermometer</v-icon>
+                        B: {{Math.round(printer.queryResult.status.heater_bed.temperature)}}°C /
+                        {{Math.round(printer.queryResult.status.heater_bed.target)}}°C
+                      </v-btn>
+
+                      <v-btn
+                        @click="gcode('m140 s'+(parseInt(printer.queryResult.status.heater_bed.target)-UI.manualControl.temperatureSetting))"
+                        small>-</v-btn>
+                      <v-btn
+                        @click="gcode('m140 s'+(parseInt(printer.queryResult.status.heater_bed.target)+UI.manualControl.temperatureSetting))"
+                        small>+</v-btn>
+                      <v-btn @click="gcode('m140 s0')" small>
+                        <v-icon>mdi-fire-off</v-icon>
+                      </v-btn>
+                    </v-col>
+                  </v-row>
+
+                </v-card-text>
+                <v-card-actions>
+                  <v-icon>mdi-thermometer</v-icon> Adjust °C
+                  <v-spacer></v-spacer>
+                  <v-btn @click="UI.manualControl.temperatureSetting = 1"
+                    :color="UI.manualControl.temperatureSetting === 1 ? 'cyan accent-4' : 'default'" small fab>1</v-btn>
+                  <v-btn @click="UI.manualControl.temperatureSetting = 5"
+                    :color="UI.manualControl.temperatureSetting === 5 ? 'cyan accent-4' : 'default'" small fab>5</v-btn>
+                  <v-btn @click="UI.manualControl.temperatureSetting = 10"
+                    :color="UI.manualControl.temperatureSetting === 10 ? 'cyan accent-4' : 'default'" small fab>10
+                  </v-btn>
+                  <v-btn @click="UI.manualControl.temperatureSetting = 50"
+                    :color="UI.manualControl.temperatureSetting === 50 ? 'cyan accent-4' : 'default'" small fab>50
+                  </v-btn>
+                </v-card-actions>
+              </v-card>
+            </v-col>
+
+            <v-col>
+              <v-card class="card fill-height">
+                <v-card-title class="mx-auto">
+                  <v-icon>mdi-axis-arrow</v-icon> Movement
+                </v-card-title>
+                <v-card-text class="fill-height">
+
+                  <v-row class="ma-auto">
+                    <v-col>
+                      <div class="gridxy">
+                        <v-spacer></v-spacer>
+                        <v-btn @click="gcode('G91');gcode('G1 Y'+UI.manualControl.movementSetting)" color="success">
+                          <v-icon>mdi-axis-y-arrow</v-icon>
+                          <v-icon>mdi-arrow-up</v-icon>
+                        </v-btn>
+
+                        <v-spacer></v-spacer>
+                        <v-btn @click="gcode('G91');gcode('G1 X-'+UI.manualControl.movementSetting)" color="success">
+                          <v-icon>mdi-axis-x-arrow</v-icon>
+                          <v-icon>mdi-arrow-left</v-icon>
+                        </v-btn>
+
+                        <v-btn @click="gcode('G91');gcode('G28 XY')">
+                          <v-icon>mdi-home</v-icon>
+                        </v-btn>
+
+                        <v-btn @click="gcode('G91');gcode('G1 X'+UI.manualControl.movementSetting)" color="success">
+                          <v-icon>mdi-axis-x-arrow</v-icon>
+                          <v-icon>mdi-arrow-right</v-icon>
+                        </v-btn>
+                        <v-spacer></v-spacer>
+                        <v-btn @click="gcode('G91');gcode('G1 Y-'+UI.manualControl.movementSetting)" color="success">
+                          <v-icon>mdi-axis-y-arrow</v-icon>
+                          <v-icon>mdi-arrow-down</v-icon>
+                        </v-btn>
+                        <v-spacer></v-spacer>
+                      </div>
+                    </v-col>
+                    <v-col>
+                      <div class="gridz">
+
+                        <v-spacer></v-spacer>
+                        <v-btn @click="gcode('G91');gcode('G1 Z'+UI.manualControl.movementSetting)" color="success">
+                          <v-icon>mdi-axis-z-arrow</v-icon>
+                          <v-icon>mdi-arrow-up</v-icon>
+                        </v-btn>
+                        <v-btn @click="gcode('G91');gcode('G28')" color="info">
+                          <v-icon>mdi-home</v-icon>All
+                        </v-btn>
+                        <v-btn @click="gcode('G91');gcode('G28 Z')">
+                          <v-icon>mdi-axis-z-arrow</v-icon>
+                          <v-icon>mdi-home</v-icon>
+                        </v-btn>
+                        <v-spacer></v-spacer>
+                        <v-btn @click="gcode('G91');gcode('G1 Z-'+UI.manualControl.movementSetting)" color="success">
+                          <v-icon>mdi-axis-z-arrow</v-icon>
+                          <v-icon>mdi-arrow-down</v-icon>
+                        </v-btn>
+                      </div>
+                    </v-col>
+                  </v-row>
+
+                </v-card-text>
+                <v-card-actions>
+                  <v-icon>mdi-axis-arrow</v-icon> Move mm
+                  <v-spacer></v-spacer>
+                  <v-btn @click="UI.manualControl.movementSetting = 0.1"
+                    :color="UI.manualControl.movementSetting === 0.1 ? 'deep-orange accent-3' : 'default'" small fab>0.1
+                  </v-btn>
+                  <v-btn @click="UI.manualControl.movementSetting = 1"
+                    :color="UI.manualControl.movementSetting === 1 ? 'deep-orange accent-3' : 'default'" small fab>1
+                  </v-btn>
+                  <v-btn @click="UI.manualControl.movementSetting = 10"
+                    :color="UI.manualControl.movementSetting === 10 ? 'deep-orange accent-3' : 'default'" small fab>10
+                  </v-btn>
+                  <v-btn @click="UI.manualControl.movementSetting = 100"
+                    :color="UI.manualControl.movementSetting === 100 ? 'deep-orange accent-3' : 'default'" small fab>100
+                  </v-btn>
+                </v-card-actions>
+              </v-card>
+            </v-col>
+
+
+            <v-col v-if="printer.queryReady">
+              <v-card class="card fill-height">
+                <v-card-title class="mx-auto">
+                  <v-icon>mdi-printer-3d-nozzle</v-icon> Extruders
+                </v-card-title>
+                <v-card-text class="d-flex flex-column mx-auto mt-auto fill-height">
+
+
+                  <v-btn @click="gcode('G91');gcode('G1 E-'+UI.manualControl.extruderSetting)">
+                    <v-icon>mdi-printer-3d-nozzle</v-icon> Extrude
+                  </v-btn>
+                  <v-btn @click="gcode('G91');gcode('G1 E-'+UI.manualControl.extruderSetting)">
+                    <v-icon>mdi-printer-3d-nozzle-outline</v-icon> Retract
+                  </v-btn>
+
+
+                  <v-menu offset-y v-if="Object.keys(printer.extruders).length > 1">
+                    <template v-slot:activator="{ on, attrs }">
+                      <v-btn color="primary" dark v-bind="attrs" v-on="on">
+
+                        <div v-if="printer.queryResult.status.toolhead.extruder.match('.*\\d.*')">
+                          Tool Select: {{printer.queryResult.status.toolhead.extruder.replace("extruder","T")}}
+                        </div>
+                        <div v-else>
+                          Tool Select: {{printer.queryResult.status.toolhead.extruder.replace("extruder","T0")}}
+                          <div>
+
+
+
+                      </v-btn>
+
+
+                    </template>
+                    <v-list>
+                      <v-list-item v-for="i,v in printer.extruders" :key="v" @click="gcode(i)">
+                        <v-list-item-title>{{ i }}</v-list-item-title>
+                      </v-list-item>
+                    </v-list>
+
+                  </v-menu>
+
+                </v-card-text>
+                <v-card-actions>
+                  <v-icon>mdi-printer-3d-nozzle</v-icon> Extrude mm
+                  <v-spacer></v-spacer>
+                  <v-btn @click="UI.manualControl.extruderSetting = 0.1"
+                    :color="UI.manualControl.extruderSetting === 0.1 ? 'blue accent-3' : 'default'" small fab>0.1
+                  </v-btn>
+                  <v-btn @click="UI.manualControl.extruderSetting = 1"
+                    :color="UI.manualControl.extruderSetting === 1 ? 'blue accent-3' : 'default'" small fab>1</v-btn>
+                  <v-btn @click="UI.manualControl.extruderSetting = 10"
+                    :color="UI.manualControl.extruderSetting === 10 ? 'blue accent-3' : 'default'" small fab>10</v-btn>
+                  <v-btn @click="UI.manualControl.extruderSetting = 100"
+                    :color="UI.manualControl.extruderSetting === 100 ? 'blue accent-3' : 'default'" small fab>100
+                  </v-btn>
+                </v-card-actions>
+              </v-card>
+
+            </v-col>
+          </v-row>
+
+
+
+          <v-row v-if="app.debug">
+            <v-col>
+
+              <v-card class="card fill-height">
+
+                <v-card-title class="mx-auto">Icons</v-card-title>
+                <v-card-text>
+                  <v-icon>mdi-home</v-icon>
+
+                  <v-icon>mdi-fire</v-icon>
+                  <v-icon>mdi-fire-off</v-icon>
+                  <v-icon>mdi-thermometer</v-icon>
+                  <v-icon>mdi-thermometer-off</v-icon>
+
+                  <v-icon>mdi-chart-line</v-icon>
+                  <v-icon>mdi-console</v-icon>
+                  <v-icon>mdi-pencil</v-icon>
+
+                  <v-icon>mdi-power</v-icon>
+                  <v-icon>mdi-restart</v-icon>
+                  <v-icon>mdi-power-sleep</v-icon>
+                  <v-icon>mdi-power-socket-au</v-icon>
+                  <v-icon>mdi-engine-off</v-icon>
+
+                  <v-icon>mdi-axis</v-icon>
+                  <v-icon>mdi-axis-arrow</v-icon>
+                  <v-icon>mdi-axis-x-arrow</v-icon>
+                  <v-icon>mdi-axis-y-arrow</v-icon>
+                  <v-icon>mdi-axis-z-arrow</v-icon>
+
+                  <v-icon>mdi-eye</v-icon>
+                  <v-icon>mdi-folder-open</v-icon>
+                  <v-icon>mdi-folder</v-icon>
+                  <v-icon>mdi-file</v-icon>
+                  <v-icon>mdi-file-code</v-icon>
+                  <v-icon>mdi-folder-plus</v-icon>
+                  <v-icon>mdi-delete</v-icon>
+                  <v-icon>mdi-upload</v-icon>
+                  <v-icon>mdi-download</v-icon>
+
+                  <v-icon>mdi-play</v-icon>
+                  <v-icon>mdi-pause</v-icon>
+                  <v-icon>mdi-cancel</v-icon>
+
+                  <v-icon>mdi-plus</v-icon>
+                  <v-icon>mdi-minus</v-icon>
+
+                  <v-icon>mdi-printer-3d</v-icon>
+                  <v-icon>mdi-printer-3d-nozzle</v-icon>
+                  <v-icon>mdi-printer-3d-nozzle-alert</v-icon>
+                  <v-icon>mdi-printer-3d-nozzle-alert-outline</v-icon>
+                  <v-icon>mdi-printer-3d-nozzle-outline</v-icon>
+
+
+                  <v-icon>mdi-github</v-icon>
+                  <v-icon>mdi-microsoft</v-icon>
+                  <v-icon>mdi-code-braces-box</v-icon>
+                  <v-icon>mdi-webcam</v-icon>
+                  <v-icon>mdi-webcam-off</v-icon>
+
+                  <v-icon>mdi-camera</v-icon>
+                  <v-icon>mdi-camera-off</v-icon>
+
+                  <v-icon>mdi-toggle-switch</v-icon>
+                </v-card-text>
+              </v-card>
+
+            </v-col>
+          </v-row>
+          <div>
+
+            <v-row>
+              <v-col v-if="app.debug">
+
+
+                <div class="terminal">
+                  <pre class="terminaloutput">{{JSON.stringify(wsDebug, null, 2)}}</pre>
+                </div>
+
+                <v-text-field prepend-inner-icon="mdi-bug" color="red" outlined filled hide-details single-line
+                  v-model="app.debugMessageID">
+                  <template v-slot:append>
+                    <small
+                      style="color:dimgrey; margin-top: 5px; margin-right: 0px; margin-bottom: 5px;">{{server.hostname}}:{{server.port}}</small>
+                    <v-btn color="light-blue darken-2" fab small
+                      style="margin-top: -8px; margin-right: 0px; margin-bottom: 5px;" @click="app.debugMessageID -= 1">
+                      -</v-btn>
+                    <v-btn color="lime darken-2" fab small
+                      style="margin-top: -8px; margin-right: -5px; margin-bottom: 5px;"
+                      @click="app.debugMessageID += 1">+</v-btn>
+                  </template>
+
+
+              </v-col>
+
+              <v-col>
+                <div class="terminal" id="console">
+                  <p class="terminaloutput" v-for="i,v in printer.console.result.gcode_store">
+
+                    <span>
+                      <font style="color: #094a86">{{moment(i.time, "X").fromNow()}} :</font>
+                      <i style="color: #761f7e;" v-if="i.type === 'command'"> {{i.message}}</i> <b v-else>
+                        {{i.message}}</b>
+                  </p>
+                  </span>
+                </div>
+
+                <v-text-field prepend-inner-icon="mdi-keyboard" outlined filled hide-details single-line
+                  v-on:keyup.enter="gcode(UI.consoleInput);UI.consoleInput=''" v-model="UI.consoleInput">
+                  <template v-slot:append>
+                    <v-btn color="success" style="margin-top: -8px; margin-right: -5px; margin-bottom: 5px;"
+                      @click="gcode(UI.consoleInput);UI.consoleInput=''">Send</v-btn>
+                  </template>
+
+              </v-col>
+
+            </v-row>
+          </div>
+
+
+
+        </v-container>
+
+
+
+        <v-snackbar :color="UI.notifyColour" v-model="UI.notify" :timeout="UI.notifyTimeout" absolute center top tile>
+          <p style="font-size: large;color: black; margin: 0; font-weight: 600;">{{UI.notifyMessage}}</p>
+        </v-snackbar>
+
+        <v-dialog v-model="UI.fileDialog">
+          <v-card color="blue-grey darken-4">
+            <v-card-text>
+
+              <v-text-field v-model="files.listSearch" append-icon="mdi-magnify" label="Search" single-line
+                hide-details></v-text-field>
+              <v-data-table :items="files.list.files" :headers="files.listHeaders" :search="files.listSearch">
+                <template v-slot:item.filename="{ item }">
+                  <v-btn
+                    @click="wsSend('printer.print.start',{'filename':item.filename}); wsSend('server.files.metadata',{'filename':item.filename},9005); UI.fileDialog = false"
+                    text small>
+                    {{ item.filename }}
+                  </v-btn>
+                </template>
+                <template v-slot:item.estimated_time="{ item }">
+                  {{moment.duration(item.estimated_time, "seconds").humanize()}}
+                </template>
+                <template v-slot:item.modified="{ item }">
+                  {{moment(item.modified, "X").fromNow()}}
+                </template>
+                <!-- <template v-slot:item.bedtemp="{ item }">
+              {{item.bedtemp}}°C
+          </template>
+          <template v-slot:item.etemp="{ item }">
+            {{item.etemp}}°C
+        </template> -->
+              </v-data-table>
+
+
+              <!-- {{files.list}} -->
+            </v-card-text>
+          </v-card>
+        </v-dialog>
+
+      </v-main>
+    </v-app>
+  </div>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/moment.js/2.29.1/moment.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/vue@2.x/dist/vue.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/vuetify@2.x/dist/vuetify.js"></script>
+  <script src="paddle.js"></script>
+
+</body>
+
+</html>
